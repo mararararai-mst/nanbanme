@@ -164,6 +164,38 @@ body{
   55%{opacity:1;}100%{transform:translate(-50%,-50%) scale(1) rotate(-8deg); opacity:1;}}
 
 .footer{text-align:center; color:var(--ink2); font-size:.72rem; margin-top:26px; opacity:.7;}
+
+/* ===== モード切替・単元テスト ===== */
+.modeswitch{display:flex; gap:10px; justify-content:center; margin:4px 0 18px;}
+.modebtn{border:none; cursor:pointer; font-family:inherit; font-weight:900; font-size:clamp(.95rem,4vw,1.15rem);
+  padding:12px 22px; border-radius:999px; background:#fff; color:var(--ink2); box-shadow:0 3px 0 rgba(0,0,0,.06); transition:transform .08s;}
+.modebtn.active{background:#7ed99a; color:#fff;}
+.modebtn.test.active{background:#ff9bbb; color:#fff;}
+.modebtn:active{transform:translateY(2px);}
+.unittest-card{display:block; width:100%; margin-top:16px; border:none; cursor:pointer; font-family:'Mochiy Pop One',sans-serif;
+  font-size:clamp(1rem,4.6vw,1.3rem); color:#7a5a00; background:linear-gradient(135deg,#ffe08a,#ffd0e0);
+  border-radius:22px; padding:18px; box-shadow:var(--shadow); transition:transform .1s;}
+.unittest-card span{display:block; font-family:'Zen Maru Gothic',sans-serif; font-weight:700; font-size:.6em; color:#8a6e4e; margin-top:4px;}
+.unittest-card:active{transform:translateY(3px);}
+.testtag{font-size:.72rem; font-weight:900; color:#d6005a; background:#ffe3ec; padding:3px 10px; border-radius:999px;}
+.modebadge{margin-left:auto; font-weight:900; font-size:.78rem; padding:5px 12px; border-radius:999px; white-space:nowrap; flex-shrink:0;}
+.modebadge.practice{background:#e3f7ea; color:#3a9d63;}
+.modebadge.test{background:#ffe3ec; color:#d6005a;}
+
+/* ===== ×（バツ）スタンプ ===== */
+.batsu{position:absolute; pointer-events:none; z-index:21; transform:translate(-50%,-50%) scale(0);
+  font-size:clamp(70px,19vw,118px); font-weight:900; color:#4d79ff; line-height:1; opacity:0;
+  animation:stamp .5s cubic-bezier(.18,1.5,.4,1) forwards; text-shadow:0 2px 6px rgba(77,121,255,.3);}
+
+/* ===== テスト結果・全問正解の色変化 ===== */
+.clear .score{font-family:'Mochiy Pop One',sans-serif; font-size:clamp(2rem,11vw,3.2rem); color:#ff7fa8; margin:6px 0 2px;}
+.ox-review{display:flex; flex-wrap:wrap; gap:7px; justify-content:center; margin:10px 0 4px; font-size:clamp(1.3rem,5.5vw,1.7rem);}
+.ox-review .ox.o{color:#ff4d6d;} .ox-review .ox.x{color:#4d79ff;}
+.clear.perfect{ background:linear-gradient(135deg,#fff6c0,#ffd86b 32%,#ff9ecf 66%,#9ad9ff);
+  background-size:220% 220%; animation:shimmer 3.2s ease infinite; box-shadow:0 0 0 5px #ffe08a, var(--shadow);}
+.clear.perfect .big{color:#d6005a;}
+.clear.perfect .score{color:#d6005a;}
+@keyframes shimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 </style>
 </head>
 <body>
@@ -193,7 +225,9 @@ const $ = s=>document.querySelector(s);
 const app = $('#app');
 let voiceOn = true;
 let stars = loadStars();
-let st = null; // 現在ステージ状態
+let st = null;            // 現在ステージ状態
+let mode = 'practice';    // 'practice'（れんしゅう） | 'test'（テスト）
+let actx = null;          // WebAudio（効果音）
 
 /* ====== ユーティリティ ====== */
 function loadStars(){ try{return JSON.parse(localStorage.getItem('nanbanme_stars')||'{}');}catch(e){return {};} }
@@ -212,22 +246,46 @@ function speak(text){
     u.lang='ja-JP'; u.rate=0.95; u.pitch=1.05; speechSynthesis.speak(u);
   }catch(e){}
 }
+/* ====== 効果音（WebAudio） ====== */
+function tone(freq,start,dur,type,gain){
+  const a=actx; if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=type||'sine'; o.frequency.value=freq; o.connect(g); g.connect(a.destination);
+  const t=a.currentTime+start;
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(gain||0.22,t+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.start(t); o.stop(t+dur+0.03);
+}
+function ensureAudio(){
+  if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } }
+  if(actx && actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
+}
+function pinpon(){ if(!voiceOn) return; ensureAudio(); tone(880,0,0.16,'sine',0.25); tone(1318.5,0.14,0.34,'sine',0.25); } // ピン↑ポン↑
+function buzz(){ if(!voiceOn) return; ensureAudio(); tone(196,0,0.32,'square',0.10); }                                  // ブー（低音）
+function fanfare(){ if(!voiceOn) return; ensureAudio(); [523,659,784,1046].forEach((f,i)=>tone(f,i*0.12,0.3,'triangle',0.22)); } // 全問正解
 function starStr(n){ let s=''; for(let i=0;i<3;i++) s+= i<n? '★' : '<span class="empty">★</span>'; return s; }
 
 /* ====== メニュー ====== */
 function renderMenu(){
   st=null;
+  const isTest = mode==='test';
+  const sub = isTest ? 'テスト：こたえは 1かいだけ タップ！' : 'すきな ステージを えらんでね ✿';
   app.innerHTML = `
   <div class="topbar">
     <div class="brand">なんばんめ マスター<span class="sub">さんすう 1ねん</span></div>
     <div class="spacer"></div>
-    <button class="iconbtn ${voiceOn?'':'off'}" id="voiceToggle">${voiceOn?'🔊 おん':'🔇 おふ'}</button>
+    <button class="iconbtn ${voiceOn?'':'off'}" id="voiceToggle">${voiceOn?'🔊 おと':'🔇 おと'}</button>
   </div>
   <div class="menu-title">
     <h1>なんばんめ</h1>
-    <p>すきな ステージを えらんでね ✿</p>
+    <p>${sub}</p>
+  </div>
+  <div class="modeswitch">
+    <button class="modebtn ${mode==='practice'?'active':''}" data-mode="practice">🌱 れんしゅう</button>
+    <button class="modebtn test ${mode==='test'?'active':''}" data-mode="test">✏️ テスト</button>
   </div>
   <div class="grid" id="stageGrid"></div>
+  <button class="unittest-card" id="unitTest">📝 単元まるごとテスト<span>6つの ぜんぶから 12もん（1かい しょうぶ）</span></button>
   <div class="footer">© なんばんめ マスター ／ さんすう1ねん 教材アプリ</div>`;
 
   const grid = $('#stageGrid');
@@ -238,10 +296,12 @@ function renderMenu(){
     b.innerHTML=`<span class="no" style="color:${s.num}">${s.id}</span>
       <span class="em">${s.em}</span>
       <span class="ti">${s.ti}</span>
-      <span class="stars">${starStr(got)}</span>`;
+      <span class="stars">${isTest?'<span class="testtag">テスト</span>':starStr(got)}</span>`;
     b.onclick=()=>startStage(s.id);
     grid.appendChild(b);
   });
+  document.querySelectorAll('.modebtn').forEach(btn=>{ btn.onclick=()=>{ mode=btn.dataset.mode; renderMenu(); }; });
+  $('#unitTest').onclick=()=>startStage('unit');
   $('#voiceToggle').onclick=()=>{ voiceOn=!voiceOn; if(!voiceOn)speechSynthesis&&speechSynthesis.cancel(); renderMenu(); };
 }
 
@@ -315,10 +375,26 @@ function genQuestions(id){
   return qs;
 }
 
+/* 単元まるごとテスト：6ステージから各2問ずつ混ぜる（12問） */
+function genUnitTest(){
+  let all=[];
+  [1,2,3,4,5,6].forEach(id=>{ const qs=genQuestions(id); all.push(qs[0], qs[1]); });
+  return shuffle(all);
+}
+
 /* ====== ステージ開始 ====== */
-function startStage(id){
-  const stage = STAGES.find(s=>s.id===id);
-  st = { id, stage, qs:genQuestions(id), qi:0, mistakes:0, selected:new Set(), answered:false };
+function startStage(id, useMode){
+  let m = useMode || mode;
+  let stage, qs;
+  if(id==='unit'){
+    m='test';
+    stage={id:'unit', em:'📝', ti:'単元まるごとテスト', color:'var(--peach)', num:'#f0996b'};
+    qs=genUnitTest();
+  } else {
+    stage = STAGES.find(s=>s.id===id);
+    qs = genQuestions(id);
+  }
+  st = { id, stage, mode:m, qs, qi:0, mistakes:0, results:[], selected:new Set(), answered:false };
   renderQuestion();
 }
 
@@ -327,17 +403,19 @@ function renderQuestion(){
   st.selected = new Set(); st.answered=false;
   let dots=''; for(let i=0;i<st.qs.length;i++){ dots+=`<div class="dot ${i<st.qi?'done':(i===st.qi?'now':'')}"></div>`; }
 
+  const isTest = st.mode==='test';
   app.innerHTML = `
   <div class="stage-head">
     <button class="backbtn" id="back">← もどる</button>
     <div class="h-ti">${st.stage.em} ${st.stage.ti}</div>
+    <span class="modebadge ${st.mode}">${isTest?'✏️テスト':'🌱れんしゅう'}</span>
   </div>
   <div class="progress">${dots}</div>
   <div class="qbar${voiceOn?' speakable':''}">
     <div class="qtext">${q.text}</div>
     ${voiceOn?'<button class="speakbtn" id="speak" title="もんだいを よみあげ">🔊</button>':''}
   </div>
-  <div class="qhint">${q.hint||'こたえだと おもう ものを タップしてね'}${voiceOn?' ・ 🔊タップで よみあげ':''}</div>
+  <div class="qhint">${isTest?`テスト ${st.qi+1}／${st.qs.length}・こたえは 1かい`:(q.hint||'こたえだと おもう ものを タップしてね')}${voiceOn?' ・ 🔊タップで よみあげ':''}</div>
   <div class="play" id="play"></div>
   <div class="fb" id="fb"></div>`;
 
@@ -442,17 +520,22 @@ function txtEnd(text,kind){ const d=document.createElement('div'); d.className='
 
 /* ====== 判定 ====== */
 function judgeTap(idx,q,el){
-  if(idx===q.answer){
-    st.answered=true;
-    el.classList.add('correct');
-    showMaru(el);
-    sparkle(el);
-    onCorrect(q);
+  const correct = idx===q.answer;
+  if(st.mode==='test'){
+    st.answered=true; st.results.push(correct);
+    document.querySelectorAll('#play .card,#play .seat').forEach(c=>c.disabled=true);
+    if(correct){ el.classList.add('correct'); showMaru(el); sparkle(el); pinpon(); }
+    else {
+      el.classList.add('wrong'); showCross(el); buzz();
+      const ce=[...document.querySelectorAll('#play .card,#play .seat')].find(c=>+c.dataset.idx===q.answer);
+      if(ce){ ce.classList.add('correct'); showMaru(ce); }
+    }
+    testNext(); return;
+  }
+  if(correct){
+    st.answered=true; el.classList.add('correct'); showMaru(el); sparkle(el); onCorrect(q);
   } else {
-    st.mistakes++;
-    el.classList.add('wrong');
-    setTimeout(()=>el.classList.remove('wrong'),400);
-    flashNg();
+    st.mistakes++; el.classList.add('wrong'); setTimeout(()=>el.classList.remove('wrong'),400); flashNg();
   }
 }
 
@@ -461,9 +544,26 @@ function checkSelect(q){
   const sel=st.selected;
   let ok = sel.size===q.correct.size;
   if(ok){ for(const v of q.correct){ if(!sel.has(v)){ ok=false; break; } } }
+
+  if(st.mode==='test'){
+    st.answered=true; st.results.push(ok);
+    document.querySelectorAll('#play .card').forEach(c=>{
+      const i=+c.dataset.idx; c.disabled=true;
+      if(q.correct.has(i)){ c.classList.remove('sel'); c.classList.add('correct'); }
+      else { c.classList.remove('sel'); }
+    });
+    const cc=[...document.querySelectorAll('#play .card.correct')];
+    showMaru(cc[Math.floor(cc.length/2)]);
+    if(ok){ sparkle($('#play')); pinpon(); }
+    else {
+      buzz();
+      sel.forEach(i=>{ if(!q.correct.has(i)){ const c=[...document.querySelectorAll('#play .card')].find(x=>+x.dataset.idx===i); if(c){ c.classList.add('wrong'); showCross(c); } } });
+    }
+    testNext(); return;
+  }
+
   if(ok){
     st.answered=true;
-    // 正解カードを緑に
     document.querySelectorAll('#play .card').forEach(c=>{
       if(q.correct.has(+c.dataset.idx)){ c.classList.remove('sel'); c.classList.add('correct'); }
       c.disabled=true;
@@ -487,8 +587,26 @@ function showMaru(anchor){
   m.style.top =(ar.top -pr.top +ar.height/2)+'px';
   play.appendChild(m);
 }
+function showCross(anchor){
+  const play=$('#play'); if(!play||!anchor) return;
+  const pr=play.getBoundingClientRect(), ar=anchor.getBoundingClientRect();
+  const m=document.createElement('div'); m.className='batsu'; m.textContent='✕';
+  m.style.left=(ar.left-pr.left+ar.width/2)+'px';
+  m.style.top =(ar.top -pr.top +ar.height/2)+'px';
+  play.appendChild(m);
+}
+/* テスト：結果を見せて「つぎへ」（やり直しなし） */
+function testNext(){
+  const fb=$('#fb'); if(!fb) return;
+  const last = st.qi===st.qs.length-1;
+  fb.innerHTML = `<button class="nextbtn" id="next">${last?'けっか ▶':'つぎへ ▶'}</button>`;
+  const go=()=>{ st.qi++; if(st.qi>=st.qs.length) finishTest(); else renderQuestion(); };
+  $('#next').onclick=go;
+  try{ $('#next').scrollIntoView({block:'nearest'}); }catch(e){}
+}
 
 function onCorrect(q){
+  pinpon();
   if(st.id===2){ $('#play').insertAdjacentHTML('beforeend', contrastHtml(q)); }
   const fb=$('#fb'); const last = st.qi===st.qs.length-1;
   fb.innerHTML = `<div class="msg ok">せいかい！🎉</div><button class="nextbtn" id="next">${last?'けっか ▶':'つぎへ ▶'}</button>`;
@@ -534,14 +652,16 @@ function flashNg(){
   flashNg._t=setTimeout(()=>{ const fb2=$('#fb'); const mm=fb2&&fb2.querySelector('.msg.ng'); if(mm && !st.answered) mm.remove(); }, 1000);
 }
 
-/* ====== ステージクリア ====== */
+/* ====== れんしゅう クリア ====== */
 function finishStage(){
   let got=3; if(st.mistakes>=1)got=2; if(st.mistakes>=3)got=1;
-  if((stars[st.id]||0)<got){ stars[st.id]=got; saveStars(); }
-  const msg = st.mistakes===0? 'パーフェクト！すごい！' : (got>=2? 'よく できました！' : 'クリア！がんばったね！');
+  const perfect = st.mistakes===0;
+  if(typeof st.id==='number' && (stars[st.id]||0)<got){ stars[st.id]=got; saveStars(); }
+  const msg = perfect? 'パーフェクト！すごい！' : (got>=2? 'よく できました！' : 'クリア！がんばったね！');
+  if(perfect) fanfare();
   app.innerHTML = `
-  <div class="clear">
-    <div class="em">${st.mistakes===0?'🏆':'🎉'}</div>
+  <div class="clear${perfect?' perfect':''}">
+    <div class="em">${perfect?'🏆':'🎉'}</div>
     <div class="big">${msg}</div>
     <div class="gotstars">${starStr(got)}</div>
     <div style="color:var(--ink2);font-weight:700;">まちがい ${st.mistakes}かい</div>
@@ -550,7 +670,29 @@ function finishStage(){
       <button class="nextbtn" id="menu">🏠 メニューへ</button>
     </div>
   </div>`;
-  $('#again').onclick=()=>startStage(st.id);
+  $('#again').onclick=()=>startStage(st.id, st.mode);
+  $('#menu').onclick=renderMenu;
+}
+
+/* ====== テスト けっか ====== */
+function finishTest(){
+  const total=st.qs.length, score=st.results.filter(Boolean).length;
+  const perfect = score===total;
+  const ox = st.results.map(r=>`<span class="ox ${r?'o':'x'}">${r?'○':'✕'}</span>`).join('');
+  const msg = perfect? 'ぜんもん せいかい！！' : (score>=Math.ceil(total*0.7)? 'よく できました！' : 'がんばったね！');
+  if(perfect) fanfare(); else pinpon();
+  app.innerHTML = `
+  <div class="clear${perfect?' perfect':''}">
+    <div class="em">${perfect?'🏆':'📝'}</div>
+    <div class="big">${msg}</div>
+    <div class="score">${score} ／ ${total}</div>
+    <div class="ox-review">${ox}</div>
+    <div class="btns">
+      <button class="nextbtn" id="again" style="background:#ffce4d;color:#7a5a00;">🔁 もういちど</button>
+      <button class="nextbtn" id="menu">🏠 メニューへ</button>
+    </div>
+  </div>`;
+  $('#again').onclick=()=>startStage(st.id, st.mode);
   $('#menu').onclick=renderMenu;
 }
 
