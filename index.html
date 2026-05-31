@@ -121,6 +121,7 @@ body{
 .seat{border:3px solid #f0eef0; background:#fff; border-radius:16px; cursor:pointer; padding:6px;
   font-size:clamp(1.5rem,7vw,2.4rem); line-height:1; box-shadow:0 4px 0 rgba(0,0,0,.05); transition:transform .08s,border-color .12s,background .12s;}
 .seat:active{transform:translateY(2px);}
+.seat.sel{border-color:#ffce4d; background:#fffae8; transform:translateY(-3px);}
 .seat.correct{border-color:var(--ok); background:#eafff0; animation:pop .35s;}
 .seat.wrong{border-color:var(--ng); background:#ffeef1; animation:shake .35s;}
 
@@ -137,6 +138,7 @@ body{
 .fb{display:flex; align-items:center; justify-content:center; gap:14px; margin-top:14px; min-height:64px;}
 .fb .msg{font-family:'Mochiy Pop One'; font-size:clamp(1.2rem,6vw,1.8rem);}
 .fb .msg.ok{color:var(--ok);} .fb .msg.ng{color:#ff7088;}
+.fb .msg.note{color:var(--ink2); font-size:clamp(1rem,5vw,1.4rem);}
 .nextbtn,.confirmbtn{border:none; cursor:pointer; font-family:'Mochiy Pop One'; color:#fff; font-size:clamp(1rem,4.6vw,1.3rem);
   padding:12px 26px; border-radius:999px; box-shadow:0 4px 0 rgba(0,0,0,.12); transition:transform .08s;}
 .nextbtn{background:#ff9bbb;} .confirmbtn{background:#ffce4d; color:#7a5a00;}
@@ -208,11 +210,12 @@ const RUNNERS = [ {n:'タヌキ',e:'🦝'},{n:'キツネ',e:'🦊'},{n:'ブタ',
 const LINEUP  = [ {n:'ネズミ',e:'🐭'},{n:'リス',e:'🐿️'},{n:'パンダ',e:'🐼'},{n:'イヌ',e:'🐶'},{n:'クマ',e:'🐻'},{n:'ウサギ',e:'🐰'} ]; // まえ→うしろ
 const BUILDING= [ {n:'ネコ',e:'🐱'},{n:'パンダ',e:'🐼'},{n:'キツネ',e:'🦊'},{n:'ブタ',e:'🐷'},{n:'ウサギ',e:'🐰'},{n:'タヌキ',e:'🦝'} ]; // うえ→した
 const FRUITS  = [ {n:'バナナ',e:'🍌'},{n:'イチゴ',e:'🍓'},{n:'メロン',e:'🍈'},{n:'リンゴ',e:'🍎'},{n:'パイナップル',e:'🍍'},{n:'ブドウ',e:'🍇'} ]; // ひだり→みぎ
+const OBJECTS = [ {n:'ボール',e:'⚽'},{n:'ふうせん',e:'🎈'},{n:'プレゼント',e:'🎁'},{n:'どんぐり',e:'🌰'},{n:'りんご',e:'🍎'},{n:'ほし',e:'⭐'} ]; // 「こ」でかぞえる物（ステージ②用）
 const SEATPOOL= ['🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🦆'];
 
 const STAGES = [
   {id:1, key:'kakekko',   em:'🏁', ti:'かけっこ なんい？', color:'var(--pink)',  num:'#ff9bbb'},
-  {id:2, key:'ninme',     em:'🐼', ti:'3にん？ 3にんめ？', color:'var(--sky)',   num:'#5fb3e0'},
+  {id:2, key:'ninme',     em:'🐼', ti:'あつまり？ なんばんめ？', color:'var(--sky)',   num:'#5fb3e0'},
   {id:3, key:'maeushiro', em:'🚗', ti:'まえから・うしろから', color:'var(--lemon)', num:'#e8b94d'},
   {id:4, key:'ueshita',   em:'🏠', ti:'うえから・したから', color:'var(--lav)',   num:'#a98fe0'},
   {id:5, key:'hidarimigi',em:'🍎', ti:'ひだり・みぎ', color:'var(--mint)',  num:'#6fc77f'},
@@ -306,30 +309,40 @@ function renderMenu(){
 }
 
 /* ====== 問題生成 ====== */
+function hikiStr(n){ const m={1:'1ぴき',2:'2ひき',3:'3びき',4:'4ひき',5:'5ひき',6:'6ぴき'}; return m[n]||(n+'ひき'); } // 匹のよみ（euphony）
+
 function genQuestions(id){
   const qs=[];
   if(id===1){
     const ranks = pickUnique(1,5,Q_PER);
-    ranks.forEach(r=>qs.push({set:RUNNERS, layout:'runner', answer:r-1,
+    ranks.forEach(r=>qs.push({set:RUNNERS, layout:'runner', multi:false, correct:new Set([r-1]),
       text:`${r}ばん の どうぶつ は どれかな？`, say:`${r}ばんの どうぶつは どれかな？`}));
   }
   if(id===2){
     for(let i=0;i<Q_PER;i++){
-      const ref = Math.random()<.5?'まえ':'うしろ';
+      const animal = Math.random()<.5;
+      const set  = animal?LINEUP:OBJECTS;
+      const ref  = animal?(Math.random()<.5?'まえ':'うしろ'):(Math.random()<.5?'ひだり':'みぎ');
+      const ends = animal?['mae','ushiro']:['hidari','migi'];
+      const fromHead = (ref==='まえ'||ref==='ひだり'); // 先頭側=index0方向
       const single = Math.random()<.5;
+      const ordStr = (n)=> animal? (n+'ばんめ') : (n+'こめ');
+      const cardStr= (n)=> animal? hikiStr(n) : (n+'こ');
+      const oneStr = animal?'1ぴき':'1こ';
+      const noun   = animal?'どうぶつ':'もの';
       if(single){
-        const n=ri(1,6); const ans = ref==='まえ'? n-1 : 6-n;
-        qs.push({set:LINEUP, layout:'select', mode:'single', ref, n, ends:['mae','ushiro'],
-          correct:new Set([ans]),
-          text:`${ref}から <b class="s">${n}にんめ</b> を えらんでね`,
-          hint:'1ぴきだけ えらぼう', say:`${ref}から ${n}にんめを えらんでね`});
-      }else{
-        const n=ri(2,5); const set=new Set();
-        if(ref==='まえ'){ for(let k=0;k<n;k++)set.add(k); } else { for(let k=0;k<n;k++)set.add(5-k); }
-        qs.push({set:LINEUP, layout:'select', mode:'group', ref, n, ends:['mae','ushiro'],
-          correct:set,
-          text:`${ref}から <b class="g">${n}にん</b> を えらんでね`,
-          hint:'あつまりを ぜんぶ えらぼう（みどりの あつまり）', say:`${ref}から ${n}にんを えらんでね`});
+        const n=ri(1,6); const idx = fromHead? n-1 : 6-n;
+        qs.push({set, layout:'select', multi:false, subj:animal?'animal':'object', ref, n, ends,
+          oneStr, cardStr:cardStr(n), ordStr:ordStr(n), correct:new Set([idx]),
+          text:`${ref}から <b class="s">${ordStr(n)}</b> の ${noun} を えらんでね`,
+          hint:`1つ えらんで「こたえる」`, say:`${ref}から ${ordStr(n)}の ${noun}を えらんでね`});
+      } else {
+        const n=ri(2,5); const sset=new Set();
+        if(fromHead){ for(let k=0;k<n;k++)sset.add(k); } else { for(let k=0;k<n;k++)sset.add(5-k); }
+        qs.push({set, layout:'select', multi:true, subj:animal?'animal':'object', ref, n, ends,
+          oneStr, cardStr:cardStr(n), ordStr:ordStr(n), correct:sset,
+          text:`${ref}から <b class="g">${cardStr(n)}</b> を えらんでね`,
+          hint:`あつまりを ぜんぶ えらんで「こたえる」`, say:`${ref}から ${cardStr(n)}を えらんでね`});
       }
     }
   }
@@ -338,24 +351,24 @@ function genQuestions(id){
       const ref=Math.random()<.5?'まえ':'うしろ'; const n=ri(1,6);
       const ans=ref==='まえ'? n-1 : 6-n;
       const cars=[]; for(let k=0;k<6;k++)cars.push({n:'',e:'🚗'});
-      qs.push({set:cars, layout:'row', ends:['mae','ushiro'], answer:ans,
-        text:`${ref}から <b>${n}だいめ</b> の くるま を タップ！`, say:`${ref}から ${n}だいめの くるまを タップしてね`});
+      qs.push({set:cars, layout:'row', multi:false, ends:['mae','ushiro'], correct:new Set([ans]),
+        text:`${ref}から <b>${n}だいめ</b> の くるま を えらんでね`, say:`${ref}から ${n}だいめの くるまを えらんでね`});
     }
   }
   if(id===4){
     for(let i=0;i<Q_PER;i++){
       const ref=Math.random()<.5?'うえ':'した'; const n=ri(1,6);
       const ans=ref==='うえ'? n-1 : 6-n;
-      qs.push({set:BUILDING, layout:'col', ends:['ue','shita'], answer:ans,
-        text:`${ref}から <b>${n}ばんめ</b> の どうぶつ を タップ！`, say:`${ref}から ${n}ばんめの どうぶつを タップしてね`});
+      qs.push({set:BUILDING, layout:'col', multi:false, ends:['ue','shita'], correct:new Set([ans]),
+        text:`${ref}から <b>${n}ばんめ</b> の どうぶつ を えらんでね`, say:`${ref}から ${n}ばんめの どうぶつを えらんでね`});
     }
   }
   if(id===5){
     for(let i=0;i<Q_PER;i++){
       const ref=Math.random()<.5?'ひだり':'みぎ'; const n=ri(1,6);
       const ans=ref==='ひだり'? n-1 : 6-n;
-      qs.push({set:FRUITS, layout:'row', ends:['hidari','migi'], answer:ans,
-        text:`${ref}から <b>${n}ばんめ</b> の くだもの を タップ！`, say:`${ref}から ${n}ばんめの くだものを タップしてね`});
+      qs.push({set:FRUITS, layout:'row', multi:false, ends:['hidari','migi'], correct:new Set([ans]),
+        text:`${ref}から <b>${n}ばんめ</b> の くだもの を えらんでね`, say:`${ref}から ${n}ばんめの くだものを えらんでね`});
     }
   }
   if(id===6){
@@ -367,9 +380,9 @@ function genQuestions(id){
       const ridx = rowRef==='まえ'? r-1 : ROWS-r;
       const cidx = colRef==='ひだり'? c-1 : COLS-c;
       const ans = ridx*COLS+cidx;
-      qs.push({layout:'seat', animals, rows:ROWS, cols:COLS, answer:ans,
-        text:`${rowRef}から <b>${r}ばんめ</b>、${colRef}から <b>${c}ばんめ</b> の どうぶつ を タップ！`,
-        say:`${rowRef}から ${r}ばんめ、${colRef}から ${c}ばんめの どうぶつを タップしてね`});
+      qs.push({layout:'seat', multi:false, animals, rows:ROWS, cols:COLS, correct:new Set([ans]),
+        text:`${rowRef}から <b>${r}ばんめ</b>、${colRef}から <b>${c}ばんめ</b> の どうぶつ を えらんでね`,
+        say:`${rowRef}から ${r}ばんめ、${colRef}から ${c}ばんめの どうぶつを えらんでね`});
     }
   }
   return qs;
@@ -415,7 +428,7 @@ function renderQuestion(){
     <div class="qtext">${q.text}</div>
     ${voiceOn?'<button class="speakbtn" id="speak" title="もんだいを よみあげ">🔊</button>':''}
   </div>
-  <div class="qhint">${isTest?`テスト ${st.qi+1}／${st.qs.length}・こたえは 1かい`:(q.hint||'こたえだと おもう ものを タップしてね')}${voiceOn?' ・ 🔊タップで よみあげ':''}</div>
+  <div class="qhint">${isTest?`テスト ${st.qi+1}／${st.qs.length}・えらんで「こたえる」（1かい）`:(q.hint||'えらんで「こたえる」を おそうね')}${voiceOn?' ・ 🔊タップで よみあげ':''}</div>
   <div class="play" id="play"></div>
   <div class="fb" id="fb"></div>`;
 
@@ -437,9 +450,6 @@ function renderPlay(q){
     });
     if(q.ends){ wrap.appendChild(endLabel(q.ends[1])); }
     play.appendChild(wrap);
-    if(q.layout==='select'){ // 確認ボタン
-      // ボタンはfbに置く
-    }
   } else if(q.layout==='col'){
     const wrap=document.createElement('div'); wrap.className='col';
     wrap.appendChild(endLabel(q.ends[0]));
@@ -449,12 +459,10 @@ function renderPlay(q){
   } else if(q.layout==='seat'){
     renderSeats(q,play);
   }
-  // select モードは確認ボタンを出す
-  if(q.layout==='select'){
-    const fb=$('#fb');
-    fb.innerHTML=`<button class="confirmbtn" id="confirm">✓ できた！</button>`;
-    $('#confirm').onclick=()=>checkSelect(q);
-  }
+  // 全問共通：えらんでから「こたえる」で確定
+  const fb=$('#fb');
+  fb.innerHTML=`<button class="confirmbtn" id="confirm">こたえる</button>`;
+  $('#confirm').onclick=()=>checkAnswer(q);
   fitPlay();
 }
 
@@ -485,17 +493,23 @@ function endLabel(kind){
 function mkCard(it,idx,q){
   const c=document.createElement('button'); c.className='card'; c.dataset.idx=idx;
   c.innerHTML=`<span class="ce">${it.e}</span>${it.n?`<span class="cn">${it.n}</span>`:''}`;
-  c.onclick=()=>{
-    if(st.answered) return;
-    if(voiceOn && it.n) speak(it.n);
-    if(q.layout==='select'){
-      if(st.selected.has(idx)){ st.selected.delete(idx); c.classList.remove('sel'); }
-      else { st.selected.add(idx); c.classList.add('sel'); }
-    } else {
-      judgeTap(idx,q,c);
-    }
-  };
+  c.onclick=()=>selectItem(idx,q,c);
   return c;
+}
+
+/* タップ＝えらぶ（判定はしない）。multi:複数トグル／単一:1つだけ */
+function selectItem(idx,q,el){
+  if(st.answered) return;
+  const name = (q.set && q.set[idx] && q.set[idx].n) ? q.set[idx].n : '';
+  if(voiceOn && name) speak(name);
+  if(q.multi){
+    if(st.selected.has(idx)){ st.selected.delete(idx); el.classList.remove('sel'); }
+    else { st.selected.add(idx); el.classList.add('sel'); }
+  } else {
+    st.selected.clear();
+    document.querySelectorAll('#play .sel').forEach(c=>c.classList.remove('sel'));
+    st.selected.add(idx); el.classList.add('sel');
+  }
 }
 
 function renderSeats(q,play){
@@ -508,7 +522,7 @@ function renderSeats(q,play){
   sg.style.gridTemplateColumns=`repeat(${q.cols},1fr)`;
   q.animals.forEach((em,idx)=>{
     const s=document.createElement('button'); s.className='seat'; s.textContent=em; s.dataset.idx=idx;
-    s.onclick=()=>{ if(!st.answered) judgeTap(idx,q,s); };
+    s.onclick=()=>selectItem(idx,q,s);
     sg.appendChild(s);
   });
   wrap.appendChild(sg);
@@ -518,65 +532,59 @@ function renderSeats(q,play){
 }
 function txtEnd(text,kind){ const d=document.createElement('div'); d.className='endlabel '+kind; d.textContent=text; return d; }
 
-/* ====== 判定 ====== */
-function judgeTap(idx,q,el){
-  const correct = idx===q.answer;
-  if(st.mode==='test'){
-    st.answered=true; st.results.push(correct);
-    document.querySelectorAll('#play .card,#play .seat').forEach(c=>c.disabled=true);
-    if(correct){ el.classList.add('correct'); showMaru(el); sparkle(el); pinpon(); }
-    else {
-      el.classList.add('wrong'); showCross(el); buzz();
-      const ce=[...document.querySelectorAll('#play .card,#play .seat')].find(c=>+c.dataset.idx===q.answer);
-      if(ce){ ce.classList.add('correct'); showMaru(ce); }
-    }
-    testNext(); return;
-  }
-  if(correct){
-    st.answered=true; el.classList.add('correct'); showMaru(el); sparkle(el); onCorrect(q);
-  } else {
-    st.mistakes++; el.classList.add('wrong'); setTimeout(()=>el.classList.remove('wrong'),400); flashNg();
-  }
-}
+/* ====== 判定（全問共通：えらぶ→こたえる） ====== */
+function setEquals(a,b){ if(a.size!==b.size) return false; for(const v of b){ if(!a.has(v)) return false; } return true; }
+function allItems(){ return [...document.querySelectorAll('#play .card,#play .seat')]; }
 
-function checkSelect(q){
+function checkAnswer(q){
   if(st.answered) return;
-  const sel=st.selected;
-  let ok = sel.size===q.correct.size;
-  if(ok){ for(const v of q.correct){ if(!sel.has(v)){ ok=false; break; } } }
+  if(st.selected.size===0){ flashMsg('えらんでね'); return; }
+  const ok = setEquals(st.selected, q.correct);
 
   if(st.mode==='test'){
     st.answered=true; st.results.push(ok);
-    document.querySelectorAll('#play .card').forEach(c=>{
-      const i=+c.dataset.idx; c.disabled=true;
-      if(q.correct.has(i)){ c.classList.remove('sel'); c.classList.add('correct'); }
-      else { c.classList.remove('sel'); }
-    });
-    const cc=[...document.querySelectorAll('#play .card.correct')];
-    showMaru(cc[Math.floor(cc.length/2)]);
-    if(ok){ sparkle($('#play')); pinpon(); }
-    else {
-      buzz();
-      sel.forEach(i=>{ if(!q.correct.has(i)){ const c=[...document.querySelectorAll('#play .card')].find(x=>+x.dataset.idx===i); if(c){ c.classList.add('wrong'); showCross(c); } } });
-    }
+    revealAnswer(q, ok);
+    if(ok) pinpon(); else buzz();
     testNext(); return;
   }
 
   if(ok){
     st.answered=true;
-    document.querySelectorAll('#play .card').forEach(c=>{
-      if(q.correct.has(+c.dataset.idx)){ c.classList.remove('sel'); c.classList.add('correct'); }
-      c.disabled=true;
-    });
-    const cc=[...document.querySelectorAll('#play .card.correct')];
-    showMaru(cc[Math.floor(cc.length/2)]);
-    sparkle($('#play'));
+    markCorrect(q);
     onCorrect(q);
   } else {
     st.mistakes++;
-    document.querySelectorAll('#play .card.sel').forEach(c=>{ c.classList.add('wrong'); setTimeout(()=>c.classList.remove('wrong'),400); });
-    flashNg();
+    document.querySelectorAll('#play .sel').forEach(c=>{ c.classList.add('wrong'); setTimeout(()=>c.classList.remove('wrong'),420); });
+    flashNg();   // やり直せる（こたえるボタンは残る）
   }
+}
+
+/* れんしゅう 正解：正解を緑＋○ */
+function markCorrect(q){
+  const items=allItems();
+  const correctEls=items.filter(c=>q.correct.has(+c.dataset.idx));
+  correctEls.forEach(c=>{ c.classList.remove('sel'); c.classList.add('correct'); });
+  items.forEach(c=>c.disabled=true);
+  if(correctEls.length){ const mid=correctEls[Math.floor(correctEls.length/2)]; showMaru(mid); sparkle(mid); }
+}
+
+/* テスト：正解を○で開示・まちがえて選んだものに× */
+function revealAnswer(q, ok){
+  const items=allItems(); items.forEach(c=>c.disabled=true);
+  const correctEls=items.filter(c=>q.correct.has(+c.dataset.idx));
+  correctEls.forEach(c=>{ c.classList.remove('sel'); c.classList.add('correct'); });
+  st.selected.forEach(i=>{ if(!q.correct.has(i)){ const c=items.find(x=>+x.dataset.idx===i); if(c){ c.classList.add('wrong'); showCross(c); } } });
+  if(correctEls.length){ const mid=correctEls[Math.floor(correctEls.length/2)]; showMaru(mid); if(ok) sparkle(mid); }
+}
+
+/* 一時メッセージ（ボタンは消さない） */
+function flashMsg(text){
+  const fb=$('#fb'); if(!fb) return;
+  let m=fb.querySelector('.msg.note');
+  if(!m){ m=document.createElement('div'); m.className='msg note'; fb.insertBefore(m, fb.firstChild); }
+  m.textContent=text;
+  clearTimeout(flashMsg._t);
+  flashMsg._t=setTimeout(()=>{ const fb2=$('#fb'); const mm=fb2&&fb2.querySelector('.msg.note'); if(mm) mm.remove(); }, 1100);
 }
 
 function showMaru(anchor){
@@ -620,14 +628,14 @@ function onCorrect(q){
 }
 
 function contrastHtml(q){
-  const set=LINEUP, ref=q.ref, n=q.n;
-  // group版とsingle版の両方を描く
-  const groupIdx=new Set(), singleIdx = ref==='まえ'? n-1 : set.length-n;
-  if(ref==='まえ'){ for(let k=0;k<n;k++)groupIdx.add(k); } else { for(let k=0;k<n;k++)groupIdx.add(set.length-1-k); }
+  const set=q.set, ref=q.ref, n=q.n;
+  const fromHead=(ref==='まえ'||ref==='ひだり');
+  const groupIdx=new Set(); for(let k=0;k<n;k++) groupIdx.add(fromHead? k : set.length-1-k);
+  const singleIdx = fromHead? n-1 : set.length-n;
   const mini=(hlSet)=> set.map((it,i)=>`<span class="${hlSet.has(i)?'hl':''}">${it.e}</span>`).join('');
   return `<div class="contrast">
-    <div class="line"><span class="tag g">${ref}から ${n}にん</span><span class="mini">${mini(groupIdx)}</span><span class="desc">＝ あつまり（${n}ひき）</span></div>
-    <div class="line"><span class="tag s">${ref}から ${n}にんめ</span><span class="mini">${mini(new Set([singleIdx]))}</span><span class="desc">＝ 1ぴきだけ</span></div>
+    <div class="line"><span class="tag g">${ref}から ${q.cardStr}</span><span class="mini">${mini(groupIdx)}</span><span class="desc">＝ あつまり（${q.cardStr}）</span></div>
+    <div class="line"><span class="tag s">${ref}から ${q.ordStr}</span><span class="mini">${mini(new Set([singleIdx]))}</span><span class="desc">＝ ${q.oneStr}だけ</span></div>
   </div>`;
 }
 
@@ -699,6 +707,10 @@ function finishTest(){
 /* ====== 起動 ====== */
 if('speechSynthesis' in window){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices(); }
 window.addEventListener('resize', ()=>{ if(st && $('#play')) fitPlay(); });
+// 最初のタップで音声(WebAudio)を解錠 → 1回目の正解からピンポンが確実に鳴る
+function unlockAudio(){ ensureAudio(); }
+window.addEventListener('pointerdown', unlockAudio, {once:true});
+window.addEventListener('touchstart', unlockAudio, {once:true});
 renderMenu();
 </script>
 </body>
