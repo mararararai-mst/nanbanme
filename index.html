@@ -554,6 +554,7 @@ function checkAnswer(q){
     onCorrect(q);
   } else {
     st.mistakes++;
+    buzz();
     document.querySelectorAll('#play .sel').forEach(c=>{ c.classList.add('wrong'); setTimeout(()=>c.classList.remove('wrong'),420); });
     flashNg();   // やり直せる（こたえるボタンは残る）
   }
