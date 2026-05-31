@@ -80,6 +80,8 @@ body{
 .speakbtn{border:none; cursor:pointer; background:var(--lemon); border-radius:18px; padding:12px; font-size:1.4rem;
   box-shadow:0 3px 0 rgba(0,0,0,.06); flex-shrink:0;}
 .speakbtn:active{transform:translateY(2px);}
+.qbar.speakable{cursor:pointer;}
+.qbar.speakable:active{transform:scale(.995);}
 
 /* play area */
 .play{background:#fff; border-radius:26px; padding:18px 14px; box-shadow:var(--shadow); position:relative; overflow:hidden;}
@@ -189,7 +191,7 @@ const Q_PER = 5;
 /* ====== 状態 ====== */
 const $ = s=>document.querySelector(s);
 const app = $('#app');
-let voiceOn = false;
+let voiceOn = true;
 let stars = loadStars();
 let st = null; // 現在ステージ状態
 
@@ -331,16 +333,16 @@ function renderQuestion(){
     <div class="h-ti">${st.stage.em} ${st.stage.ti}</div>
   </div>
   <div class="progress">${dots}</div>
-  <div class="qbar">
+  <div class="qbar${voiceOn?' speakable':''}">
     <div class="qtext">${q.text}</div>
-    ${voiceOn?'<button class="speakbtn" id="speak" title="もういちど きく">🔊</button>':''}
+    ${voiceOn?'<button class="speakbtn" id="speak" title="もんだいを よみあげ">🔊</button>':''}
   </div>
-  <div class="qhint">${q.hint||'こたえだと おもう ものを タップしてね'}</div>
+  <div class="qhint">${q.hint||'こたえだと おもう ものを タップしてね'}${voiceOn?' ・ 🔊タップで よみあげ':''}</div>
   <div class="play" id="play"></div>
   <div class="fb" id="fb"></div>`;
 
   $('#back').onclick=renderMenu;
-  if(voiceOn){ const sb=$('#speak'); if(sb) sb.onclick=()=>speak(q.say); setTimeout(()=>speak(q.say),250); }
+  if(voiceOn){ const qbar=document.querySelector('.qbar'); if(qbar) qbar.onclick=()=>speak(q.say); }
   renderPlay(q);
 }
 
@@ -407,6 +409,7 @@ function mkCard(it,idx,q){
   c.innerHTML=`<span class="ce">${it.e}</span>${it.n?`<span class="cn">${it.n}</span>`:''}`;
   c.onclick=()=>{
     if(st.answered) return;
+    if(voiceOn && it.n) speak(it.n);
     if(q.layout==='select'){
       if(st.selected.has(idx)){ st.selected.delete(idx); c.classList.remove('sel'); }
       else { st.selected.add(idx); c.classList.add('sel'); }
@@ -449,7 +452,6 @@ function judgeTap(idx,q,el){
     st.mistakes++;
     el.classList.add('wrong');
     setTimeout(()=>el.classList.remove('wrong'),400);
-    speak('ちがうよ。もういちど！');
     flashNg();
   }
 }
@@ -473,7 +475,6 @@ function checkSelect(q){
   } else {
     st.mistakes++;
     document.querySelectorAll('#play .card.sel').forEach(c=>{ c.classList.add('wrong'); setTimeout(()=>c.classList.remove('wrong'),400); });
-    speak('おしい！もういちど かんがえてみよう');
     flashNg();
   }
 }
@@ -488,7 +489,6 @@ function showMaru(anchor){
 }
 
 function onCorrect(q){
-  speak('せいかい！');
   if(st.id===2){ $('#play').insertAdjacentHTML('beforeend', contrastHtml(q)); }
   const fb=$('#fb'); const last = st.qi===st.qs.length-1;
   fb.innerHTML = `<div class="msg ok">せいかい！🎉</div><button class="nextbtn" id="next">${last?'けっか ▶':'つぎへ ▶'}</button>`;
@@ -539,7 +539,6 @@ function finishStage(){
   let got=3; if(st.mistakes>=1)got=2; if(st.mistakes>=3)got=1;
   if((stars[st.id]||0)<got){ stars[st.id]=got; saveStars(); }
   const msg = st.mistakes===0? 'パーフェクト！すごい！' : (got>=2? 'よく できました！' : 'クリア！がんばったね！');
-  speak(msg);
   app.innerHTML = `
   <div class="clear">
     <div class="em">${st.mistakes===0?'🏆':'🎉'}</div>
