@@ -278,9 +278,18 @@ function ensureAudio(){
   if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } }
   if(actx && actx.state==='suspended'){ try{ actx.resume(); }catch(e){} }
 }
-function pinpon(){ if(!voiceOn) return; ensureAudio(); tone(880,0,0.16,'sine',0.25); tone(1318.5,0.14,0.34,'sine',0.25); } // ピン↑ポン↑
-function buzz(){ if(!voiceOn) return; ensureAudio(); tone(196,0,0.32,'square',0.10); }                                  // ブー（低音）
-function fanfare(){ if(!voiceOn) return; ensureAudio(); [523,659,784,1046].forEach((f,i)=>tone(f,i*0.12,0.3,'triangle',0.22)); } // 全問正解
+/* 効果音（sfx/*.mp3 ＝ 効果音ラボ。出典は sfx/CREDITS.md） */
+const SE_CACHE = {};
+function se(name){
+  if(!(voiceOn)) return;
+  try{
+    const base = SE_CACHE[name] || (SE_CACHE[name] = new Audio('sfx/' + name + '.mp3'));
+    const a = base.cloneNode(); a.play().catch(() => {});
+  }catch(e){}
+}
+function pinpon(){ se('se_correct'); }   // せいかい
+function buzz(){ se('se_wrong'); }       // ざんねん
+function fanfare(){ se('se_clear'); }    // 全問正解
 function starStr(n){ let s=''; for(let i=0;i<3;i++) s+= i<n? '★' : '<span class="empty">★</span>'; return s; }
 
 /* ====== メニュー ====== */
